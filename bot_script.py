@@ -324,7 +324,9 @@ async def main():
     scheduler.start()
 
     await app.initialize()
+    print("About to start polling...")
     await app.start()
+    print("Polling started!")
     print("Bot corriendo con scheduler para tarea diaria a las 7:00 am...")
     try:
         await asyncio.Event().wait()  # Mantener el bot vivo
