@@ -148,21 +148,28 @@ def crear_epub_con_noticias(urls, archivo_salida):
     epub.write_epub(archivo_salida, libro)
 
 async def enviar_email_kindle(file_path, subject, recipient):
+    print(f"[LOG] Starting to send email to {recipient} with file {file_path}")
     message = EmailMessage()
     message["From"] = formataddr(("Tu Bot", EMAIL_SENDER))
     message["To"] = recipient
     message["Subject"] = subject
     message.set_content("Adjunto archivo para tu Kindle.")
 
-    with open(file_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(file_path)
-        message.add_attachment(
-            file_data, maintype="application", subtype="epub+zip", filename=file_name
-        )
+    try:
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+            file_name = os.path.basename(file_path)
+            print(f"[LOG] Attaching file: {file_name} ({len(file_data)} bytes)")
+            message.add_attachment(
+                file_data, maintype="application", subtype="epub+zip", filename=file_name
+            )
+    except Exception as e:
+        print(f"[ERROR] Could not open or attach the file: {e}")
+        return False
 
     try:
-        await aiosmtplib.send(
+        print(f"[LOG] Connecting to SMTP server {SMTP_SERVER}:{SMTP_PORT} as {EMAIL_SENDER}")
+        response = await aiosmtplib.send(
             message,
             hostname=SMTP_SERVER,
             port=SMTP_PORT,
@@ -170,9 +177,11 @@ async def enviar_email_kindle(file_path, subject, recipient):
             username=EMAIL_SENDER,
             password=EMAIL_PASSWORD,
         )
+        print(f"[LOG] Email sent successfully. SMTP Response: {response}")
         return True
     except Exception as e:
-        print(f"Error enviando email: {e}")
+        print(f"[ERROR] Error sending email: {e}")
+        return False
         return False
 
 async def tarea_diaria(application):
@@ -224,15 +233,15 @@ async def tarea_diaria(application):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hola 👋 este bot genera diariamente un EPUB con noticias de México.\n"
-        "Puedes configurar tu email Kindle con /sendtokindle tu_email@kindle.com\n"
-        "Y recibir noticias manualmente con /generar\n"
-        "Para actualizar el bot desde GitHub usa /update"
+        "Hi 👋 this bot generates a daily EPUB with news from Mexico.\n"
+        "You can set your Kindle email with /sendtokindle your_email@kindle.com\n"
+        "And receive news manually with /generate\n"
+        "To update the bot from GitHub use /update"
     )
 
 async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
-        await update.message.reply_text("Por favor usa: /sendtokindle tu_email_kindle")
+        await update.message.reply_text("Please use: /sendtokindle your_kindle_email")
         return
 
     email = context.args[0]
@@ -241,22 +250,47 @@ async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["kindle_email"] = email
         global KINDLE_EMAIL
         KINDLE_EMAIL = email
-        await update.message.reply_text(f"Email Kindle configurado a: {email}")
+        await update.message.reply_text(f"Kindle email set to: {email}")
     except EmailNotValidError:
-        await update.message.reply_text("Email inválido, intenta de nuevo.")
+        await update.message.reply_text("Invalid email, please try again.")
 
 async def generar_noticias_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Generando noticias ahora...")
+    await update.message.reply_text("Generating news now...")
     await tarea_diaria(context.application)
 
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows the general status of the bot."""
+    status_lines = []
+    status_lines.append("🤖 General bot status:")
+    # Environment variables and config
+    status_lines.append(f"- EMAIL_SENDER: {EMAIL_SENDER if EMAIL_SENDER else 'Not set'}")
+    status_lines.append(f"- KINDLE_EMAIL: {KINDLE_EMAIL if KINDLE_EMAIL else 'Not set'}")
+    status_lines.append(f"- CHAT_ID: {CHAT_ID}")
+    status_lines.append(f"- SMTP_SERVER: {SMTP_SERVER}:{SMTP_PORT}")
+    status_lines.append(f"- RSS_FEED: {RSS_FEED}")
+    # File status
+    epub_exists = os.path.exists('noticias.epub')
+    status_lines.append(f"- noticias.epub file: {'Exists' if epub_exists else 'Does not exist'}")
+    historial_exists = os.path.exists(HISTORIAL_FILE)
+    status_lines.append(f"- History file: {'Exists' if historial_exists else 'Does not exist'}")
+    # Last modification
+    if epub_exists:
+        mtime = datetime.fromtimestamp(os.path.getmtime('noticias.epub')).strftime('%Y-%m-%d %H:%M:%S')
+        status_lines.append(f"- Last EPUB generation: {mtime}")
+    if historial_exists:
+        mtime = datetime.fromtimestamp(os.path.getmtime(HISTORIAL_FILE)).strftime('%Y-%m-%d %H:%M:%S')
+        status_lines.append(f"- Last history update: {mtime}")
+    # Final message
+    await update.message.reply_text("\n".join(status_lines))
+
 async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Actualizando código desde GitHub...")
+    await update.message.reply_text("Updating code from GitHub...")
     try:
         result = subprocess.run(
             ["git", "pull"], cwd=os.getcwd(), capture_output=True, text=True
         )
         salida = result.stdout + "\n" + result.stderr
-        await update.message.reply_text(f"Resultado de git pull:\n{salida}")
+        await update.message.reply_text(f"Result of git pull:\n{salida}")
 
         result_restart = subprocess.run(
             ["sudo", "systemctl", "restart", "telegrambot"],
@@ -264,18 +298,19 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=True,
         )
         salida_restart = result_restart.stdout + "\n" + result_restart.stderr
-        await update.message.reply_text(f"Servicio reiniciado.\n{salida_restart}")
+        await update.message.reply_text(f"Service restarted.\n{salida_restart}")
 
     except Exception as e:
-        await update.message.reply_text(f"Error al actualizar: {e}")
+        await update.message.reply_text(f"Error updating: {e}")
 
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("sendtokindle", send_to_kindle))
-    app.add_handler(CommandHandler("generar", generar_noticias_manual))
+    app.add_handler(CommandHandler("generate", generar_noticias_manual))
     app.add_handler(CommandHandler("update", update_bot))
+    app.add_handler(CommandHandler("status", status))
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
