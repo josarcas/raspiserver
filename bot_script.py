@@ -8,7 +8,13 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from newspaper import Article
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
 from ebooklib import epub
 from bs4 import BeautifulSoup
 from PIL import Image
@@ -27,15 +33,35 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
-CHAT_ID = int(os.getenv("CHAT_ID"))
+CHAT_ID = os.getenv("CHAT_ID")
+
+if CHAT_ID is None:
+    raise ValueError("CHAT_ID no está definido en las variables de entorno (.env)")
+
+try:
+    CHAT_ID = int(CHAT_ID)
+except ValueError:
+    raise ValueError("CHAT_ID debe ser un número entero válido")
 
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
 RSS_FEED = "https://www.milenio.com/rss/mexico.xml"
-PALABRAS_CLAVE = ["México", "CDMX", "Cancún", "Guadalajara", "Monterrey", "Jalisco", "Nuevo León", "Puebla", "Chiapas", "Veracruz"]
+PALABRAS_CLAVE = [
+    "México",
+    "CDMX",
+    "Cancún",
+    "Guadalajara",
+    "Monterrey",
+    "Jalisco",
+    "Nuevo León",
+    "Puebla",
+    "Chiapas",
+    "Veracruz",
+]
 
 HISTORIAL_FILE = "urls_procesadas.json"
+
 
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
@@ -43,9 +69,11 @@ def cargar_historial():
             return set(json.load(f))
     return set()
 
+
 def guardar_historial(urls):
     with open(HISTORIAL_FILE, "w", encoding="utf-8") as f:
         json.dump(list(urls), f, ensure_ascii=False, indent=2)
+
 
 def optimizar_imagen(imagen_bytes):
     with Image.open(io.BytesIO(imagen_bytes)) as im:
@@ -55,6 +83,7 @@ def optimizar_imagen(imagen_bytes):
         im.save(salida, format="JPEG", quality=85)
         return salida.getvalue()
 
+
 def limpiar_nombre_archivo(nombre):
     nombre = re.sub(r'[\\/*?:"<>|]', "", nombre)
     nombre = nombre.strip()
@@ -62,13 +91,14 @@ def limpiar_nombre_archivo(nombre):
         nombre = nombre[:100]
     return nombre
 
+
 def crear_epub_con_noticias(urls, archivo_salida):
     libro = epub.EpubBook()
-    libro.set_identifier('noticias-diarias')
+    libro.set_identifier("noticias-diarias")
     fecha = datetime.now().strftime("%Y-%m-%d")
-    libro.set_title(f'Noticias de México - {fecha}')
-    libro.set_language('es')
-    libro.add_author('Agregador de noticias')
+    libro.set_title(f"Noticias de México - {fecha}")
+    libro.set_language("es")
+    libro.add_author("Agregador de noticias")
 
     capítulos = []
 
@@ -94,7 +124,7 @@ def crear_epub_con_noticias(urls, archivo_salida):
                         uid=img_filename,
                         file_name=f"images/{img_filename}",
                         media_type="image/jpeg",
-                        content=img_data
+                        content=img_data,
                     )
                     libro.add_item(img_item)
                     html += f'<div><img src="{img_item.file_name}" style="max-width:100%; margin-bottom:20px;"></div>'
@@ -104,7 +134,7 @@ def crear_epub_con_noticias(urls, archivo_salida):
             html += "<div style='font-family:Arial; font-size:1em; line-height:1.6;'>" + texto.replace("\n", "<br>") + "</div>"
 
             soup = BeautifulSoup(html, "html.parser")
-            capitulo = epub.EpubHtml(title=titulo, file_name=f"capitulo{i}.xhtml", lang='es')
+            capitulo = epub.EpubHtml(title=titulo, file_name=f"capitulo{i}.xhtml", lang="es")
             capitulo.set_content(str(soup))
             libro.add_item(capitulo)
             capítulos.append(capitulo)
@@ -113,21 +143,24 @@ def crear_epub_con_noticias(urls, archivo_salida):
             print(f"Error procesando noticia {url}: {e}")
 
     libro.toc = tuple(capítulos)
-    libro.spine = ['nav'] + capítulos
+    libro.spine = ["nav"] + capítulos
     libro.add_item(epub.EpubNcx())
     libro.add_item(epub.EpubNav())
 
-    estilo = '''
+    estilo = """
     body { font-family: Georgia, serif; margin: 2em; color: #333; }
     h2 { color: #0055a5; }
     img { margin: 1em 0; }
-    '''
-    estilo_item = epub.EpubItem(uid="style_nav", file_name="style/style.css", media_type="text/css", content=estilo)
+    """
+    estilo_item = epub.EpubItem(
+        uid="style_nav", file_name="style/style.css", media_type="text/css", content=estilo
+    )
     libro.add_item(estilo_item)
     for cap in capítulos:
         cap.add_item(estilo_item)
 
     epub.write_epub(archivo_salida, libro)
+
 
 async def enviar_email_kindle(file_path, subject, recipient):
     message = EmailMessage()
@@ -139,7 +172,9 @@ async def enviar_email_kindle(file_path, subject, recipient):
     with open(file_path, "rb") as f:
         file_data = f.read()
         file_name = os.path.basename(file_path)
-        message.add_attachment(file_data, maintype="application", subtype="epub+zip", filename=file_name)
+        message.add_attachment(
+            file_data, maintype="application", subtype="epub+zip", filename=file_name
+        )
 
     try:
         await aiosmtplib.send(
@@ -154,6 +189,7 @@ async def enviar_email_kindle(file_path, subject, recipient):
     except Exception as e:
         print(f"Error enviando email: {e}")
         return False
+
 
 async def tarea_diaria(application):
     print("Ejecutando tarea diaria para generar noticias...")
@@ -180,7 +216,11 @@ async def tarea_diaria(application):
         crear_epub_con_noticias(urls_nuevas, tmp_epub.name)
 
         try:
-            await application.bot.send_document(chat_id=CHAT_ID, document=open(tmp_epub.name, "rb"), filename=f"noticias_mexico_{datetime.now().strftime('%Y%m%d')}.epub")
+            await application.bot.send_document(
+                chat_id=CHAT_ID,
+                document=open(tmp_epub.name, "rb"),
+                filename=f"noticias_mexico_{datetime.now().strftime('%Y%m%d')}.epub",
+            )
         except Exception as e:
             print(f"Error enviando EPUB a Telegram: {e}")
 
@@ -198,6 +238,7 @@ async def tarea_diaria(application):
     historial.update(urls_nuevas)
     guardar_historial(historial)
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hola 👋 este bot genera diariamente un EPUB con noticias de México.\n"
@@ -205,6 +246,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Y recibir noticias manualmente con /generar\n"
         "Para actualizar el bot desde GitHub usa /update"
     )
+
 
 async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
@@ -221,25 +263,34 @@ async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except EmailNotValidError:
         await update.message.reply_text("Email inválido, intenta de nuevo.")
 
+
 async def generar_noticias_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Generando noticias ahora...")
     await tarea_diaria(context.application)
 
+
 async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Actualizando código desde GitHub...")
     try:
-        result = subprocess.run(["git", "pull"], cwd=os.getcwd(), capture_output=True, text=True)
+        result = subprocess.run(
+            ["git", "pull"], cwd=os.getcwd(), capture_output=True, text=True
+        )
         salida = result.stdout + "\n" + result.stderr
         await update.message.reply_text(f"Resultado de git pull:\n{salida}")
 
-        result_restart = subprocess.run(["sudo", "systemctl", "restart", "telegrambot"], capture_output=True, text=True)
+        result_restart = subprocess.run(
+            ["sudo", "systemctl", "restart", "telegrambot"],
+            capture_output=True,
+            text=True,
+        )
         salida_restart = result_restart.stdout + "\n" + result_restart.stderr
         await update.message.reply_text(f"Servicio reiniciado.\n{salida_restart}")
 
     except Exception as e:
         await update.message.reply_text(f"Error al actualizar: {e}")
 
-if __name__ == "__main__":
+
+async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -252,4 +303,8 @@ if __name__ == "__main__":
     scheduler.start()
 
     print("Bot corriendo con scheduler para tarea diaria a las 7:00 am...")
-    app.run_polling()
+    await app.run_polling()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
