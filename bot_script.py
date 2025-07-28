@@ -314,6 +314,3 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except KeyboardInterrupt:
         pass
-    finally:
-        # No cerramos el loop porque puede estar siendo usado internamente
-        pass
