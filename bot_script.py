@@ -303,6 +303,9 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error updating: {e}")
 
+async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"[DEBUG] Update received: {update}")
+
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -311,6 +314,10 @@ async def main():
     app.add_handler(CommandHandler("generate", generar_noticias_manual))
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
+    # Global debug handler
+    app.add_handler(CommandHandler(None, log_all_updates))
+    app.add_handler(CommandHandler("", log_all_updates))
+    app.add_handler(CommandHandler("*", log_all_updates))
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
