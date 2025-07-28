@@ -12,6 +12,8 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 from ebooklib import epub
 from bs4 import BeautifulSoup
@@ -315,9 +317,7 @@ async def main():
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
     # Global debug handler
-    app.add_handler(CommandHandler(None, log_all_updates))
-    app.add_handler(CommandHandler("", log_all_updates))
-    app.add_handler(CommandHandler("*", log_all_updates))
+    app.add_handler(MessageHandler(filters.ALL, log_all_updates))
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
