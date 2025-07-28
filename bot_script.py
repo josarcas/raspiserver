@@ -11,8 +11,6 @@ from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
-    filters,
     ContextTypes,
 )
 from ebooklib import epub
@@ -62,18 +60,15 @@ PALABRAS_CLAVE = [
 
 HISTORIAL_FILE = "urls_procesadas.json"
 
-
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
         with open(HISTORIAL_FILE, "r", encoding="utf-8") as f:
             return set(json.load(f))
     return set()
 
-
 def guardar_historial(urls):
     with open(HISTORIAL_FILE, "w", encoding="utf-8") as f:
         json.dump(list(urls), f, ensure_ascii=False, indent=2)
-
 
 def optimizar_imagen(imagen_bytes):
     with Image.open(io.BytesIO(imagen_bytes)) as im:
@@ -82,15 +77,6 @@ def optimizar_imagen(imagen_bytes):
         salida = io.BytesIO()
         im.save(salida, format="JPEG", quality=85)
         return salida.getvalue()
-
-
-def limpiar_nombre_archivo(nombre):
-    nombre = re.sub(r'[\\/*?:"<>|]', "", nombre)
-    nombre = nombre.strip()
-    if len(nombre) > 100:
-        nombre = nombre[:100]
-    return nombre
-
 
 def crear_epub_con_noticias(urls, archivo_salida):
     libro = epub.EpubBook()
@@ -161,7 +147,6 @@ def crear_epub_con_noticias(urls, archivo_salida):
 
     epub.write_epub(archivo_salida, libro)
 
-
 async def enviar_email_kindle(file_path, subject, recipient):
     message = EmailMessage()
     message["From"] = formataddr(("Tu Bot", EMAIL_SENDER))
@@ -189,7 +174,6 @@ async def enviar_email_kindle(file_path, subject, recipient):
     except Exception as e:
         print(f"Error enviando email: {e}")
         return False
-
 
 async def tarea_diaria(application):
     print("Ejecutando tarea diaria para generar noticias...")
@@ -238,7 +222,6 @@ async def tarea_diaria(application):
     historial.update(urls_nuevas)
     guardar_historial(historial)
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hola 👋 este bot genera diariamente un EPUB con noticias de México.\n"
@@ -246,7 +229,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Y recibir noticias manualmente con /generar\n"
         "Para actualizar el bot desde GitHub usa /update"
     )
-
 
 async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
@@ -263,11 +245,9 @@ async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except EmailNotValidError:
         await update.message.reply_text("Email inválido, intenta de nuevo.")
 
-
 async def generar_noticias_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Generando noticias ahora...")
     await tarea_diaria(context.application)
-
 
 async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Actualizando código desde GitHub...")
@@ -289,7 +269,6 @@ async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error al actualizar: {e}")
 
-
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -302,15 +281,14 @@ async def main():
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
     scheduler.start()
 
+    await app.initialize()
+    await app.start()
     print("Bot corriendo con scheduler para tarea diaria a las 7:00 am...")
-    await app.run_polling()
-
+    try:
+        await asyncio.Event().wait()  # Mantener el bot vivo
+    finally:
+        await app.stop()
+        await app.shutdown()
 
 if __name__ == "__main__":
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(main())
