@@ -29,7 +29,29 @@ import subprocess
 
 load_dotenv()
 
+import requests
+
+def validate_telegram_token(token):
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                print(f"[TOKEN TEST] Telegram token is valid. Bot username: @{data['result']['username']}")
+                return True
+            else:
+                print(f"[TOKEN TEST] Telegram token is invalid: {data}")
+                return False
+        else:
+            print(f"[TOKEN TEST] Telegram API returned status code {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"[TOKEN TEST] Error validating Telegram token: {e}")
+        return False
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+validate_telegram_token(TELEGRAM_TOKEN)
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
