@@ -239,7 +239,7 @@ async def list_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not fuentes:
         await update.message.reply_text("No hay fuentes registradas.")
     else:
-        msg = "Fuentes:\n" + "\n".join([f'{f['name']}: {f['rss']}' for f in fuentes])
+        msg = "Fuentes:\n" + "\n".join([f"{f['name']}: {f['rss']}" for f in fuentes])
         await update.message.reply_text(msg)
 
 @only_owner
