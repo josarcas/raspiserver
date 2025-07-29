@@ -1,0 +1,10 @@
+[
+  {
+    "name": "BBC",
+    "rss": "http://feeds.bbci.co.uk/news/rss.xml"
+  },
+  {
+    "name": "El Universal",
+    "rss": "https://www.eluniversal.com.mx/rss/ultima.xml"
+  }
+]

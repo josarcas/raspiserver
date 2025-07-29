@@ -1,99 +1,89 @@
 import os
-import re
+import json
 import tempfile
 import requests
 import feedparser
-import aiosmtplib
-from email.message import EmailMessage
-from email.utils import formataddr
 from newspaper import Article
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
 from ebooklib import epub
 from bs4 import BeautifulSoup
 from PIL import Image
+from email.message import EmailMessage
+from email.utils import formataddr
 from email_validator import validate_email, EmailNotValidError
+from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
-import json
-from datetime import datetime
-from dotenv import load_dotenv
-import io
 import subprocess
+import io
+from datetime import datetime
 
+# --- Configuración y utilidades ---
 load_dotenv()
 
-import requests
-
-def validate_telegram_token(token):
-    url = f"https://api.telegram.org/bot{token}/getMe"
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ok"):
-                print(f"[TOKEN TEST] Telegram token is valid. Bot username: @{data['result']['username']}")
-                return True
-            else:
-                print(f"[TOKEN TEST] Telegram token is invalid: {data}")
-                return False
-        else:
-            print(f"[TOKEN TEST] Telegram API returned status code {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"[TOKEN TEST] Error validating Telegram token: {e}")
-        return False
-
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-validate_telegram_token(TELEGRAM_TOKEN)
+CHAT_ID = os.getenv("TELEGRAM_USER_ID")
+EMAIL_ENCRYPTION_KEY = os.getenv("EMAIL_ENCRYPTION_KEY")
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
-CHAT_ID = os.getenv("CHAT_ID")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
-if CHAT_ID is None:
-    raise ValueError("CHAT_ID no está definido en las variables de entorno (.env)")
+EMAILS_FILE = "emails.enc"
+NEWS_SOURCES_FILE = "news_sources.json"
+SENT_NEWS_FILE = "sent_news.json"
 
-try:
-    CHAT_ID = int(CHAT_ID)
-except ValueError:
-    raise ValueError("CHAT_ID debe ser un número entero válido")
+if not all([TELEGRAM_TOKEN, CHAT_ID, EMAIL_ENCRYPTION_KEY, EMAIL_SENDER, EMAIL_PASSWORD]):
+    raise Exception("Faltan variables de entorno requeridas en .env")
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
-RSS_FEED = "https://www.milenio.com/rss/mexico.xml"
-PALABRAS_CLAVE = [
-    "México",
-    "CDMX",
-    "Cancún",
-    "Guadalajara",
-    "Monterrey",
-    "Jalisco",
-    "Nuevo León",
-    "Puebla",
-    "Chiapas",
-    "Veracruz",
-]
+# --- Emails cifrados ---
+def guardar_emails(emails):
+    data = json.dumps(emails).encode()
+    encrypted = fernet.encrypt(data)
+    with open(EMAILS_FILE, "wb") as f:
+        f.write(encrypted)
 
-HISTORIAL_FILE = "urls_procesadas.json"
+def cargar_emails():
+    if not os.path.exists(EMAILS_FILE):
+        return []
+    with open(EMAILS_FILE, "rb") as f:
+        encrypted = f.read()
+        try:
+            data = fernet.decrypt(encrypted)
+            return json.loads(data.decode())
+        except Exception as e:
+            print(f"[ERROR] Error al descifrar emails: {e}")
+            return []
 
-def cargar_historial():
-    if os.path.exists(HISTORIAL_FILE):
-        with open(HISTORIAL_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+# --- Fuentes de noticias ---
+def cargar_fuentes():
+    if not os.path.exists(NEWS_SOURCES_FILE):
+        return []
+    with open(NEWS_SOURCES_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def guardar_historial(urls):
-    with open(HISTORIAL_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(urls), f, ensure_ascii=False, indent=2)
+def guardar_fuentes(fuentes):
+    with open(NEWS_SOURCES_FILE, "w", encoding="utf-8") as f:
+        json.dump(fuentes, f, ensure_ascii=False, indent=2)
 
+# --- Noticias enviadas ---
+def cargar_enviadas():
+    if not os.path.exists(SENT_NEWS_FILE):
+        return set()
+    with open(SENT_NEWS_FILE, "r", encoding="utf-8") as f:
+        return set(json.load(f))
+
+def guardar_enviadas(news):
+    with open(SENT_NEWS_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(news), f, ensure_ascii=False, indent=2)
+
+# --- Utilidades EPUB e imágenes ---
 def optimizar_imagen(imagen_bytes):
     with Image.open(io.BytesIO(imagen_bytes)) as im:
         im = im.convert("RGB")
@@ -106,29 +96,23 @@ def crear_epub_con_noticias(urls, archivo_salida):
     libro = epub.EpubBook()
     libro.set_identifier("noticias-diarias")
     fecha = datetime.now().strftime("%Y-%m-%d")
-    libro.set_title(f"Noticias de México - {fecha}")
+    libro.set_title(f"Noticias - {fecha}")
     libro.set_language("es")
     libro.add_author("Agregador de noticias")
-
-    capítulos = []
-
+    capitulos = []
     for i, url in enumerate(urls):
         try:
             article = Article(url)
             article.download()
             article.parse()
-
             titulo = article.title or f"Noticia {i+1}"
             texto = article.text or ""
             imagenes = list(article.images)[:1]
-
             html = f"<h2>{titulo}</h2>"
-
             for idx, img_url in enumerate(imagenes):
                 try:
                     img_data_raw = requests.get(img_url, timeout=5).content
                     img_data = optimizar_imagen(img_data_raw)
-
                     img_filename = f"noticia{i}_img{idx}.jpg"
                     img_item = epub.EpubItem(
                         uid=img_filename,
@@ -140,23 +124,18 @@ def crear_epub_con_noticias(urls, archivo_salida):
                     html += f'<div><img src="{img_item.file_name}" style="max-width:100%; margin-bottom:20px;"></div>'
                 except Exception as e:
                     print(f"Error con imagen: {e}")
-
             html += "<div style='font-family:Arial; font-size:1em; line-height:1.6;'>" + texto.replace("\n", "<br>") + "</div>"
-
             soup = BeautifulSoup(html, "html.parser")
             capitulo = epub.EpubHtml(title=titulo, file_name=f"capitulo{i}.xhtml", lang="es")
             capitulo.set_content(str(soup))
             libro.add_item(capitulo)
-            capítulos.append(capitulo)
-
+            capitulos.append(capitulo)
         except Exception as e:
             print(f"Error procesando noticia {url}: {e}")
-
-    libro.toc = tuple(capítulos)
-    libro.spine = ["nav"] + capítulos
+    libro.toc = tuple(capitulos)
+    libro.spine = ["nav"] + capitulos
     libro.add_item(epub.EpubNcx())
     libro.add_item(epub.EpubNav())
-
     estilo = """
     body { font-family: Georgia, serif; margin: 2em; color: #333; }
     h2 { color: #0055a5; }
@@ -166,33 +145,30 @@ def crear_epub_con_noticias(urls, archivo_salida):
         uid="style_nav", file_name="style/style.css", media_type="text/css", content=estilo
     )
     libro.add_item(estilo_item)
-    for cap in capítulos:
+    for cap in capitulos:
         cap.add_item(estilo_item)
-
     epub.write_epub(archivo_salida, libro)
 
+# --- Email a Kindle ---
+import aiosmtplib
 async def enviar_email_kindle(file_path, subject, recipient):
-    print(f"[LOG] Starting to send email to {recipient} with file {file_path}")
+    print(f"[LOG] Enviando email a {recipient} con archivo {file_path}")
     message = EmailMessage()
-    message["From"] = formataddr(("Tu Bot", EMAIL_SENDER))
+    message["From"] = formataddr(("NewsBot", EMAIL_SENDER))
     message["To"] = recipient
     message["Subject"] = subject
-    message.set_content("Adjunto archivo para tu Kindle.")
-
+    message.set_content("Archivo generado para tu Kindle.")
     try:
         with open(file_path, "rb") as f:
             file_data = f.read()
             file_name = os.path.basename(file_path)
-            print(f"[LOG] Attaching file: {file_name} ({len(file_data)} bytes)")
             message.add_attachment(
                 file_data, maintype="application", subtype="epub+zip", filename=file_name
             )
     except Exception as e:
-        print(f"[ERROR] Could not open or attach the file: {e}")
+        print(f"[ERROR] No se pudo adjuntar archivo: {e}")
         return False
-
     try:
-        print(f"[LOG] Connecting to SMTP server {SMTP_SERVER}:{SMTP_PORT} as {EMAIL_SENDER}")
         response = await aiosmtplib.send(
             message,
             hostname=SMTP_SERVER,
@@ -201,160 +177,177 @@ async def enviar_email_kindle(file_path, subject, recipient):
             username=EMAIL_SENDER,
             password=EMAIL_PASSWORD,
         )
-        print(f"[LOG] Email sent successfully. SMTP Response: {response}")
+        print(f"[LOG] Email enviado. SMTP: {response}")
         return True
     except Exception as e:
-        print(f"[ERROR] Error sending email: {e}")
+        print(f"[ERROR] Error enviando email: {e}")
         return False
-        return False
 
-async def tarea_diaria(application):
-    print("Ejecutando tarea diaria para generar noticias...")
+# --- Protección de comandos ---
+def only_owner(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user.id != int(CHAT_ID):
+            await update.message.reply_text("No autorizado.")
+            return
+        return await func(update, context)
+    return wrapper
 
-    historial = cargar_historial()
-
-    feed = feedparser.parse(RSS_FEED)
-    urls_nuevas = []
-    for entry in feed.entries:
-        titulo = entry.title
-        link = entry.link
-        if any(palabra.lower() in titulo.lower() for palabra in PALABRAS_CLAVE):
-            if link not in historial:
-                urls_nuevas.append(link)
-
-    if not urls_nuevas:
-        print("No hay noticias nuevas que procesar.")
-        return
-
-    urls_nuevas = urls_nuevas[:10]
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_epub:
-        tmp_epub.close()
-        crear_epub_con_noticias(urls_nuevas, tmp_epub.name)
-
-        try:
-            await application.bot.send_document(
-                chat_id=CHAT_ID,
-                document=open(tmp_epub.name, "rb"),
-                filename=f"noticias_mexico_{datetime.now().strftime('%Y%m%d')}.epub",
-            )
-        except Exception as e:
-            print(f"Error enviando EPUB a Telegram: {e}")
-
-        try:
-            exito = await enviar_email_kindle(tmp_epub.name, "Noticias México", KINDLE_EMAIL)
-            if exito:
-                print("EPUB enviado a Kindle con éxito.")
-            else:
-                print("Error al enviar EPUB a Kindle.")
-        except Exception as e:
-            print(f"Error enviando email a Kindle: {e}")
-
-        os.unlink(tmp_epub.name)
-
-    historial.update(urls_nuevas)
-    guardar_historial(historial)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Hi 👋 this bot generates a daily EPUB with news from Mexico.\n"
-        "You can set your Kindle email with /sendtokindle your_email@kindle.com\n"
-        "And receive news manually with /generate\n"
-        "To update the bot from GitHub use /update"
-    )
-
-async def send_to_kindle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- Comandos Telegram ---
+@only_owner
+async def add_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
-        await update.message.reply_text("Please use: /sendtokindle your_kindle_email")
+        await update.message.reply_text("Uso: /addemail correo@ejemplo.com")
         return
-
     email = context.args[0]
     try:
         validate_email(email)
-        context.user_data["kindle_email"] = email
-        global KINDLE_EMAIL
-        KINDLE_EMAIL = email
-        await update.message.reply_text(f"Kindle email set to: {email}")
+        emails = cargar_emails()
+        if email in emails:
+            await update.message.reply_text("Ese correo ya está registrado.")
+            return
+        emails.append(email)
+        guardar_emails(emails)
+        await update.message.reply_text(f"Correo {email} registrado.")
     except EmailNotValidError:
-        await update.message.reply_text("Invalid email, please try again.")
+        await update.message.reply_text("Correo inválido.")
 
-async def generar_noticias_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Generating news now...")
+@only_owner
+async def list_emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    emails = cargar_emails()
+    if not emails:
+        await update.message.reply_text("No hay correos registrados.")
+    else:
+        await update.message.reply_text("Correos registrados:\n" + "\n".join(emails))
+
+@only_owner
+async def add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 2:
+        await update.message.reply_text("Uso: /addsource Nombre URL_RSS")
+        return
+    name, url = context.args
+    fuentes = cargar_fuentes()
+    if any(f["rss"] == url for f in fuentes):
+        await update.message.reply_text("Esa fuente ya existe.")
+        return
+    fuentes.append({"name": name, "rss": url})
+    guardar_fuentes(fuentes)
+    await update.message.reply_text(f"Fuente {name} agregada.")
+
+@only_owner
+async def list_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    fuentes = cargar_fuentes()
+    if not fuentes:
+        await update.message.reply_text("No hay fuentes registradas.")
+    else:
+        msg = "Fuentes:\n" + "\n".join([f'{f['name']}: {f['rss']}' for f in fuentes])
+        await update.message.reply_text(msg)
+
+@only_owner
+async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Generando y enviando EPUB...")
     await tarea_diaria(context.application)
+    await update.message.reply_text("¡Envío terminado!")
 
+@only_owner
+async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Actualizando código desde GitHub...")
+    try:
+        result = subprocess.run(["git", "pull"], cwd=os.getcwd(), capture_output=True, text=True)
+        salida = result.stdout + "\n" + result.stderr
+        await update.message.reply_text(f"Resultado de git pull:\n{salida}")
+        result_restart = subprocess.run(["sudo", "systemctl", "restart", "telegrambot"], capture_output=True, text=True)
+        salida_restart = result_restart.stdout + "\n" + result_restart.stderr
+        await update.message.reply_text(f"Servicio reiniciado.\n{salida_restart}")
+    except Exception as e:
+        await update.message.reply_text(f"Error actualizando: {e}")
+
+@only_owner
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows the general status of the bot."""
     status_lines = []
-    status_lines.append("🤖 General bot status:")
-    # Environment variables and config
-    status_lines.append(f"- EMAIL_SENDER: {EMAIL_SENDER if EMAIL_SENDER else 'Not set'}")
-    status_lines.append(f"- KINDLE_EMAIL: {KINDLE_EMAIL if KINDLE_EMAIL else 'Not set'}")
-    status_lines.append(f"- CHAT_ID: {CHAT_ID}")
+    status_lines.append("🤖 Estado general:")
+    status_lines.append(f"- EMAIL_SENDER: {EMAIL_SENDER}")
     status_lines.append(f"- SMTP_SERVER: {SMTP_SERVER}:{SMTP_PORT}")
-    status_lines.append(f"- RSS_FEED: {RSS_FEED}")
-    # File status
-    epub_exists = os.path.exists('noticias.epub')
-    status_lines.append(f"- noticias.epub file: {'Exists' if epub_exists else 'Does not exist'}")
-    historial_exists = os.path.exists(HISTORIAL_FILE)
-    status_lines.append(f"- History file: {'Exists' if historial_exists else 'Does not exist'}")
-    # Last modification
-    if epub_exists:
-        mtime = datetime.fromtimestamp(os.path.getmtime('noticias.epub')).strftime('%Y-%m-%d %H:%M:%S')
-        status_lines.append(f"- Last EPUB generation: {mtime}")
-    if historial_exists:
-        mtime = datetime.fromtimestamp(os.path.getmtime(HISTORIAL_FILE)).strftime('%Y-%m-%d %H:%M:%S')
-        status_lines.append(f"- Last history update: {mtime}")
-    # Final message
+    status_lines.append(f"- Correos registrados: {len(cargar_emails())}")
+    status_lines.append(f"- Fuentes: {len(cargar_fuentes())}")
+    status_lines.append(f"- Noticias enviadas: {len(cargar_enviadas())}")
     await update.message.reply_text("\n".join(status_lines))
 
-async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Updating code from GitHub...")
-    try:
-        result = subprocess.run(
-            ["git", "pull"], cwd=os.getcwd(), capture_output=True, text=True
-        )
-        salida = result.stdout + "\n" + result.stderr
-        await update.message.reply_text(f"Result of git pull:\n{salida}")
+# --- Lógica de obtención y envío de noticias ---
+async def tarea_diaria(application):
+    print("[LOG] Ejecutando tarea diaria...")
+    fuentes = cargar_fuentes()
+    enviadas = cargar_enviadas()
+    nuevas_urls = []
+    for fuente in fuentes:
+        try:
+            feed = feedparser.parse(fuente["rss"])
+            for entry in feed.entries:
+                url = entry.link
+                if url not in enviadas:
+                    nuevas_urls.append(url)
+        except Exception as e:
+            print(f"[ERROR] Fuente {fuente['name']}: {e}")
+    if not nuevas_urls:
+        print("No hay noticias nuevas.")
+        return
+    nuevas_urls = nuevas_urls[:10]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_epub:
+        tmp_epub.close()
+        crear_epub_con_noticias(nuevas_urls, tmp_epub.name)
+        emails = cargar_emails()
+        for email in emails:
+            await enviar_email_kindle(tmp_epub.name, "Noticias Diarias", email)
+        try:
+            await application.bot.send_document(
+                chat_id=int(CHAT_ID),
+                document=open(tmp_epub.name, "rb"),
+                filename=f"noticias_{datetime.now().strftime('%Y%m%d')}.epub",
+            )
+        except Exception as e:
+            print(f"[ERROR] Enviando EPUB a Telegram: {e}")
+        os.unlink(tmp_epub.name)
+    enviadas.update(nuevas_urls)
+    guardar_enviadas(enviadas)
 
-        result_restart = subprocess.run(
-            ["sudo", "systemctl", "restart", "telegrambot"],
-            capture_output=True,
-            text=True,
-        )
-        salida_restart = result_restart.stdout + "\n" + result_restart.stderr
-        await update.message.reply_text(f"Service restarted.\n{salida_restart}")
-
-    except Exception as e:
-        await update.message.reply_text(f"Error updating: {e}")
+# --- Bot Telegram y scheduler ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Bienvenido. Este bot genera un EPUB diario con noticias relevantes.\n"
+        "Comandos:\n"
+        "/addemail correo@ejemplo.com — Agrega correo\n"
+        "/listemails — Lista correos\n"
+        "/addsource Nombre URL_RSS — Agrega fuente\n"
+        "/listsources — Lista fuentes\n"
+        "/generate — Genera y envía manualmente\n"
+        "/update — Actualiza desde GitHub\n"
+        "/status — Estado general"
+    )
 
 async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"[DEBUG] Update received: {update}")
+    print(f"[DEBUG] Update recibido: {update}")
 
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("sendtokindle", send_to_kindle))
-    app.add_handler(CommandHandler("generate", generar_noticias_manual))
+    app.add_handler(CommandHandler("addemail", add_email))
+    app.add_handler(CommandHandler("listemails", list_emails))
+    app.add_handler(CommandHandler("addsource", add_source))
+    app.add_handler(CommandHandler("listsources", list_sources))
+    app.add_handler(CommandHandler("generate", generate))
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
-    # Global debug handler
     app.add_handler(MessageHandler(filters.ALL, log_all_updates))
-
     scheduler = AsyncIOScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
     scheduler.start()
-
     await app.initialize()
-    print("About to start polling...")
+    print("[LOG] Iniciando bot...")
     await app.start()
-    print("Polling started!")
-    print("Bot corriendo con scheduler para tarea diaria a las 7:00 am...")
+    print("[LOG] Bot corriendo con tarea diaria a las 7:00 am...")
     try:
-        await asyncio.Event().wait()  # Mantener el bot vivo
+        await asyncio.Event().wait()
     finally:
         await app.stop()
-        await app.shutdown()
 
 if __name__ == "__main__":
     asyncio.run(main())
