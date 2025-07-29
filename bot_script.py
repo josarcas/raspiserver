@@ -324,7 +324,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"[DEBUG] Update recibido: {update}")
+    user_id = update.effective_user.id if update.effective_user else None
+    print(f"[DEBUG] Update recibido de user_id={user_id}: {update}")
 
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()

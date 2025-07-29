@@ -1,0 +1,14 @@
+python-telegram-bot==20.0
+feedparser
+newspaper3k
+ebooklib
+python-dotenv
+cryptography
+aiosmtplib
+email-validator
+Pillow
+beautifulsoup4
+APScheduler
+requests
+lxml[html_clean]
+lxml_html_clean
