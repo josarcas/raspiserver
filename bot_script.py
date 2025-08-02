@@ -436,10 +436,8 @@ def obtener_noticias_nuevas():
     fuentes = cargar_fuentes()
     enviadas = cargar_enviadas()
     nuevas_urls = []
-    # Si fuentes es lista, conviértela a dict
-    if isinstance(fuentes, list):
-        fuentes = {f"Source {i+1}": url for i, url in enumerate(fuentes)}
-    for nombre, url in fuentes.items():
+    for fuente in fuentes:
+        url = fuente["rss"]
         feed = feedparser.parse(url)
         for entry in feed.entries:
             link = entry.link
