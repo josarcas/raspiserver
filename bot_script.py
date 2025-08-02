@@ -344,14 +344,9 @@ async def main():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
     scheduler.start()
-    await app.initialize()
     print("[LOG] Iniciando bot...")
-    await app.start()
-    print("[LOG] Bot corriendo con tarea diaria a las 7:00 am...")
-    try:
-        await asyncio.Event().wait()
-    finally:
-        await app.stop()
+    await app.run_polling()
+    print("[LOG] Bot detenido.")
 
 if __name__ == "__main__":
     asyncio.run(main())
