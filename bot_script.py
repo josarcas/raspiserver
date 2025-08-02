@@ -329,6 +329,8 @@ async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Enviar mensaje de arranque al usuario
+    await app.bot.send_message(chat_id=int(CHAT_ID), text="✅ El bot de noticias se ha iniciado correctamente.")
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addemail", add_email))
     app.add_handler(CommandHandler("listemails", list_emails))
