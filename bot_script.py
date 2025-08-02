@@ -44,7 +44,18 @@ fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
 # --- Emails cifrados ---
 def guardar_emails(emails):
-    print("[DEBUG guardar_emails] emails =", emails, type(emails))
+    debug_msg = f"[DEBUG guardar_emails] emails = {emails} {type(emails)}"
+    print(debug_msg)
+    # Enviar debug por Telegram si es posible
+    try:
+        from telegram import Bot
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_USER_ID")
+        if token and chat_id:
+            bot = Bot(token=token)
+            bot.send_message(chat_id=int(chat_id), text=debug_msg)
+    except Exception as e:
+        print(f"[DEBUG guardar_emails] Error enviando debug por Telegram: {e}")
     # Validar que solo se acepten listas de strings
     if not isinstance(emails, list):
         print("[ERROR] Emails debe ser una lista de strings. Limpiando emails.enc...")
