@@ -329,7 +329,7 @@ async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Responder a cualquier mensaje recibido
     await update.message.reply_text(f"Mensaje recibido. Tu user_id es: {user_id}")
 
-async def main():
+def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -345,8 +345,9 @@ async def main():
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
     scheduler.start()
     print("[LOG] Iniciando bot...")
-    await app.run_polling()
+    app.run_polling()
     print("[LOG] Bot detenido.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
+
