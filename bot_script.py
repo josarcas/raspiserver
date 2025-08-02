@@ -16,7 +16,7 @@ from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 import asyncio
 import subprocess
 import io
@@ -341,7 +341,7 @@ def main():
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(MessageHandler(filters.ALL, log_all_updates))
-    scheduler = AsyncIOScheduler()
+    scheduler = BackgroundScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
     scheduler.start()
     print("[LOG] Iniciando bot...")
