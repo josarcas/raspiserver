@@ -208,11 +208,11 @@ def optimizar_imagen(imagen_bytes):
 
 def crear_epub_con_noticias(urls, archivo_salida):
     libro = epub.EpubBook()
-    libro.set_identifier("noticias-diarias")
-    fecha = datetime.now().strftime("%Y-%m-%d")
-    libro.set_title(f"Noticias - {fecha}")
+    libro.set_identifier("raspinews-diario")
+    fecha = datetime.now().strftime("%d/%m/%Y")
+    libro.set_title(f"RaspiNews México - {fecha}")
     libro.set_language("es")
-    libro.add_author("Agregador de noticias")
+    libro.add_author("RaspiNews")
     capitulos = []
     for i, url in enumerate(urls):
         try:
@@ -307,6 +307,34 @@ def only_owner(func):
     return wrapper
 
 # --- Comandos Telegram ---
+@only_owner
+async def remove_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Uso: /removeemail correo@ejemplo.com")
+        return
+    email = context.args[0]
+    emails = cargar_emails()
+    if email not in emails:
+        await update.message.reply_text("Ese correo no está registrado.")
+        return
+    emails = [e for e in emails if e != email]
+    guardar_emails(emails)
+    await update.message.reply_text(f"Correo {email} eliminado.")
+
+@only_owner
+async def remove_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Uso: /removesource NombreFuente")
+        return
+    name = context.args[0]
+    fuentes = cargar_fuentes()
+    fuentes_nuevas = [f for f in fuentes if f["name"].lower() != name.lower()]
+    if len(fuentes_nuevas) == len(fuentes):
+        await update.message.reply_text("No se encontró esa fuente.")
+        return
+    guardar_fuentes(fuentes_nuevas)
+    await update.message.reply_text(f"Fuente '{name}' eliminada.")
+
 @only_owner
 async def add_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 1:
@@ -497,8 +525,10 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addemail", add_email))
+    app.add_handler(CommandHandler("removeemail", remove_email))
     app.add_handler(CommandHandler("listemails", list_emails))
     app.add_handler(CommandHandler("addsource", add_source))
+    app.add_handler(CommandHandler("removesource", remove_source))
     app.add_handler(CommandHandler("listsources", list_sources))
     app.add_handler(CommandHandler("generate", generate))
     app.add_handler(CommandHandler("update", update_bot))
