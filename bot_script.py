@@ -450,7 +450,8 @@ def obtener_noticias_nuevas():
 # --- Bot Telegram y scheduler ---
 @only_owner
 async def force_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Fetching and sending today's news...")
+    if update.message:
+        await update.message.reply_text("Fetching and sending today's news...")
     try:
         # Obtener emails y noticias nuevas igual que en tarea_diaria
         emails = cargar_emails()
