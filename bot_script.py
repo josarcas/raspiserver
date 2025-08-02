@@ -309,6 +309,19 @@ async def tarea_diaria(application):
     enviadas.update(nuevas_urls)
     guardar_enviadas(enviadas)
 
+def obtener_noticias_nuevas():
+    # Carga fuentes y noticias enviadas
+    fuentes = cargar_fuentes()
+    enviadas = cargar_enviadas()
+    nuevas_urls = []
+    for nombre, url in fuentes.items():
+        feed = feedparser.parse(url)
+        for entry in feed.entries:
+            link = entry.link
+            if link not in enviadas and link not in nuevas_urls:
+                nuevas_urls.append(link)
+    return nuevas_urls
+
 # --- Bot Telegram y scheduler ---
 @only_owner
 async def force_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
