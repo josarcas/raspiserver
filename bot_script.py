@@ -44,6 +44,7 @@ fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
 # --- Emails cifrados ---
 def guardar_emails(emails):
+    print("[DEBUG guardar_emails] emails =", emails, type(emails))
     # Validar que solo se acepten listas de strings
     if not isinstance(emails, list):
         print("[ERROR] Emails debe ser una lista de strings. Limpiando emails.enc...")
@@ -266,16 +267,24 @@ async def add_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     email = context.args[0]
     try:
-        validate_email(email)
-        emails = cargar_emails()
-        if email in emails:
-            await update.message.reply_text("Ese correo ya está registrado.")
-            return
-        emails.append(email)
-        guardar_emails(emails)
-        await update.message.reply_text(f"Correo {email} registrado.")
-    except EmailNotValidError:
-        await update.message.reply_text("Correo inválido.")
+        v = validate_email(email)
+        email = v.email
+    except EmailNotValidError as e:
+        await update.message.reply_text(f"Correo inválido: {e}")
+        return
+    emails = cargar_emails()
+    # Forzar que emails sea lista de strings
+    if not isinstance(emails, list):
+        print("[ERROR] emails no es lista, limpiando...")
+        emails = []
+    else:
+        emails = [str(e) for e in emails]
+    if email in emails:
+        await update.message.reply_text("Ese correo ya está registrado.")
+        return
+    emails.append(email)
+    guardar_emails(emails)
+    await update.message.reply_text(f"Correo {email} registrado.")
 
 @only_owner
 async def list_emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
