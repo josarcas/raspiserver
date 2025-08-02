@@ -44,7 +44,20 @@ fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
 # --- Emails cifrados ---
 def guardar_emails(emails):
-    # Serializa y cifra la lista de emails
+    # Validar que solo se acepten listas de strings
+    if not isinstance(emails, list):
+        print("[ERROR] Emails debe ser una lista de strings. Limpiando emails.enc...")
+        if os.path.exists(EMAILS_FILE):
+            os.remove(EMAILS_FILE)
+        emails = []
+    else:
+        for e in emails:
+            if not isinstance(e, str):
+                print("[ERROR] Cada email debe ser un string. Limpiando emails.enc...")
+                if os.path.exists(EMAILS_FILE):
+                    os.remove(EMAILS_FILE)
+                emails = []
+                break
     data = json.dumps(emails).encode()
     encrypted = fernet.encrypt(data)
     with open(EMAILS_FILE, "wb") as f:
