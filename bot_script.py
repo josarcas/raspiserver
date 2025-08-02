@@ -464,11 +464,17 @@ def obtener_noticias_nuevas():
     fuentes = cargar_fuentes()
     enviadas = cargar_enviadas()
     nuevas_urls = []
+    palabras_bloqueo = ["sociales", "espectáculos", "espectaculos", "farandula", "farándula", "show", "celebridad", "celebridades", "gente"]
     for fuente in fuentes:
         url = fuente["rss"]
         feed = feedparser.parse(url)
         for entry in feed.entries:
             link = entry.link
+            titulo = getattr(entry, 'title', '').lower()
+            resumen = getattr(entry, 'summary', '').lower()
+            url_lower = link.lower()
+            if any(pal in titulo or pal in resumen or pal in url_lower for pal in palabras_bloqueo):
+                continue
             if link not in enviadas and link not in nuevas_urls:
                 nuevas_urls.append(link)
     return nuevas_urls
