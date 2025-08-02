@@ -94,6 +94,21 @@ def cargar_emails():
         return []
 
 def guardar_fuentes(fuentes):
+    debug_msg = f"[DEBUG guardar_fuentes] fuentes = {fuentes} {type(fuentes)}"
+    print(debug_msg)
+    try:
+        from telegram import Bot
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_USER_ID")
+        if token and chat_id:
+            bot = Bot(token=token)
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(bot.send_message(chat_id=int(chat_id), text=debug_msg))
+            else:
+                loop.run_until_complete(bot.send_message(chat_id=int(chat_id), text=debug_msg))
+    except Exception as e:
+        print(f"[DEBUG guardar_fuentes] Error enviando debug por Telegram: {e}")
     # Permitir guardar como dict o lista
     with open(NEWS_SOURCES_FILE, "w", encoding="utf-8") as f:
         json.dump(fuentes, f, ensure_ascii=False, indent=2)
@@ -113,6 +128,21 @@ def cargar_fuentes():
             return {}
 
 def guardar_enviadas(enviadas):
+    debug_msg = f"[DEBUG guardar_enviadas] enviadas = {enviadas} {type(enviadas)}"
+    print(debug_msg)
+    try:
+        from telegram import Bot
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_USER_ID")
+        if token and chat_id:
+            bot = Bot(token=token)
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(bot.send_message(chat_id=int(chat_id), text=debug_msg))
+            else:
+                loop.run_until_complete(bot.send_message(chat_id=int(chat_id), text=debug_msg))
+    except Exception as e:
+        print(f"[DEBUG guardar_enviadas] Error enviando debug por Telegram: {e}")
     # Siempre guardar como lista
     with open(SENT_NEWS_FILE, "w", encoding="utf-8") as f:
         json.dump(list(enviadas), f, ensure_ascii=False, indent=2)
