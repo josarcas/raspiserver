@@ -326,8 +326,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     print(f"[DEBUG] Update recibido de user_id={user_id}: {update}")
-    # Responder a cualquier mensaje recibido
-    await update.message.reply_text(f"Mensaje recibido. Tu user_id es: {user_id}")
+    if str(user_id) == str(CHAT_ID):
+        await update.message.reply_text("Mensaje recibido.")
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
