@@ -314,8 +314,25 @@ async def tarea_diaria(application):
 async def force_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Fetching and sending today's news...")
     try:
-        await tarea_diaria(None)  # Llama la función de envío inmediato
-        await update.message.reply_text("✅ News sent.")
+        # Obtener emails y noticias nuevas igual que en tarea_diaria
+        emails = cargar_emails()
+        nuevas_urls = obtener_noticias_nuevas()
+        if not nuevas_urls:
+            await update.message.reply_text("No new news to send.")
+            return
+        nuevas_urls = nuevas_urls[:10]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_epub:
+            tmp_epub.close()
+            crear_epub_con_noticias(nuevas_urls, tmp_epub.name)
+            results = []
+            for email in emails:
+                try:
+                    await enviar_email_kindle(tmp_epub.name, "Noticias Diarias", email)
+                    results.append(f"✅ Email sent to {email}")
+                except Exception as e:
+                    results.append(f"❌ Error sending to {email}: {e}")
+            os.unlink(tmp_epub.name)
+        await update.message.reply_text("\n".join(results))
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
