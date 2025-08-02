@@ -207,12 +207,57 @@ def optimizar_imagen(imagen_bytes):
         return salida.getvalue()
 
 def crear_epub_con_noticias(urls, archivo_salida):
+    from PIL import ImageDraw, ImageFont
     libro = epub.EpubBook()
-    libro.set_identifier("raspinews-diario")
     fecha = datetime.now().strftime("%d/%m/%Y")
-    libro.set_title(f"RaspiNews México - {fecha}")
+    titulo = f"RaspiNews México - {fecha}"
+    libro.set_identifier("raspinews-diario")
+    libro.set_title(titulo)
     libro.set_language("es")
     libro.add_author("RaspiNews")
+    # Metadatos extra para asegurar título en carátula
+    libro.add_metadata('DC', 'title', titulo)
+    libro.add_metadata('DC', 'creator', "RaspiNews")
+    libro.add_metadata('DC', 'language', "es")
+
+    # --- Collage de portada ---
+    portada_imgs = []
+    for i, url in enumerate(urls[:4]):
+        try:
+            article = Article(url)
+            article.download()
+            article.parse()
+            imagenes = list(article.images)
+            if imagenes:
+                img_data = requests.get(imagenes[0], timeout=5).content
+                portada_imgs.append(Image.open(io.BytesIO(img_data)).convert("RGB"))
+        except Exception:
+            continue
+    # Crear collage o fondo simple
+    cover_size = (1200, 1800)
+    cover = Image.new("RGB", cover_size, (230, 230, 230))
+    if portada_imgs:
+        # Redimensionar y pegar imágenes
+        for idx, img in enumerate(portada_imgs):
+            img = img.resize((cover_size[0]//2, cover_size[1]//2))
+            x = (idx % 2) * (cover_size[0]//2)
+            y = (idx // 2) * (cover_size[1]//2)
+            cover.paste(img, (x, y))
+    draw = ImageDraw.Draw(cover)
+    try:
+        font = ImageFont.truetype("arial.ttf", 60)
+    except:
+        font = ImageFont.load_default()
+    draw.rectangle([(0, cover_size[1]-200), (cover_size[0], cover_size[1])], fill=(20, 20, 20, 220))
+    draw.text((40, cover_size[1]-180), titulo, font=font, fill=(255,255,255))
+    # Guardar portada en memoria
+    portada_bytes = io.BytesIO()
+    cover.save(portada_bytes, format="JPEG")
+    portada_bytes.seek(0)
+    portada_item = epub.EpubItem(uid="cover", file_name="images/cover.jpg", media_type="image/jpeg", content=portada_bytes.read())
+    libro.add_item(portada_item)
+    libro.set_cover("cover.jpg", portada_item.content)
+
     capitulos = []
     for i, url in enumerate(urls):
         try:
@@ -459,12 +504,25 @@ async def tarea_diaria(application):
     enviadas.update(nuevas_urls)
     guardar_enviadas(enviadas)
 
+BANWORDS_FILE = "banwords.json"
+
+def cargar_banwords():
+    if not os.path.exists(BANWORDS_FILE):
+        return []
+    with open(BANWORDS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def guardar_banwords(banwords):
+    with open(BANWORDS_FILE, "w", encoding="utf-8") as f:
+        json.dump(banwords, f, ensure_ascii=False, indent=2)
+
 def obtener_noticias_nuevas():
     # Carga fuentes y noticias enviadas
     fuentes = cargar_fuentes()
     enviadas = cargar_enviadas()
     nuevas_urls = []
     palabras_bloqueo = ["sociales", "espectáculos", "espectaculos", "farandula", "farándula", "show", "celebridad", "celebridades", "gente"]
+    palabras_bloqueo += cargar_banwords()
     for fuente in fuentes:
         url = fuente["rss"]
         feed = feedparser.parse(url)
@@ -473,11 +531,40 @@ def obtener_noticias_nuevas():
             titulo = getattr(entry, 'title', '').lower()
             resumen = getattr(entry, 'summary', '').lower()
             url_lower = link.lower()
-            if any(pal in titulo or pal in resumen or pal in url_lower for pal in palabras_bloqueo):
+            if any(pal.lower() in titulo or pal.lower() in resumen or pal.lower() in url_lower for pal in palabras_bloqueo):
                 continue
             if link not in enviadas and link not in nuevas_urls:
                 nuevas_urls.append(link)
     return nuevas_urls
+
+@only_owner
+async def banword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /banword palabra_o_frase")
+        return
+    palabra = " ".join(context.args).strip().lower()
+    banwords = cargar_banwords()
+    if palabra in banwords:
+        await update.message.reply_text(f"'{palabra}' ya está en la lista de palabras/frases baneadas.")
+        return
+    banwords.append(palabra)
+    guardar_banwords(banwords)
+    await update.message.reply_text(f"'{palabra}' añadida a la lista de palabras/frases baneadas.")
+
+@only_owner
+async def unbanword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /unbanword palabra_o_frase")
+        return
+    palabra = " ".join(context.args).strip().lower()
+    banwords = cargar_banwords()
+    if palabra not in banwords:
+        await update.message.reply_text(f"'{palabra}' no está en la lista de palabras/frases baneadas.")
+        return
+    banwords = [w for w in banwords if w != palabra]
+    guardar_banwords(banwords)
+    await update.message.reply_text(f"'{palabra}' eliminada de la lista de palabras/frases baneadas.")
+
 
 # --- Bot Telegram y scheduler ---
 @only_owner
@@ -540,6 +627,8 @@ def main():
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("force", force_send))
+    app.add_handler(CommandHandler("banword", banword))
+    app.add_handler(CommandHandler("unbanword", unbanword))
     app.add_handler(MessageHandler(filters.ALL, log_all_updates))
     scheduler = BackgroundScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
