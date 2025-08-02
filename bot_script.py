@@ -310,6 +310,15 @@ async def tarea_diaria(application):
     guardar_enviadas(enviadas)
 
 # --- Bot Telegram y scheduler ---
+@only_owner
+async def force_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Fetching and sending today's news...")
+    try:
+        await tarea_diaria(None)  # Llama la función de envío inmediato
+        await update.message.reply_text("✅ News sent.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Bienvenido. Este bot genera un EPUB diario con noticias relevantes.\n"
@@ -340,6 +349,7 @@ def main():
     app.add_handler(CommandHandler("generate", generate))
     app.add_handler(CommandHandler("update", update_bot))
     app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("force", force_send))
     app.add_handler(MessageHandler(filters.ALL, log_all_updates))
     scheduler = BackgroundScheduler()
     scheduler.add_job(tarea_diaria, "cron", hour=7, minute=0, args=[app])
