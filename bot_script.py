@@ -43,6 +43,8 @@ if not all([TELEGRAM_TOKEN, CHAT_ID, EMAIL_ENCRYPTION_KEY, EMAIL_SENDER, EMAIL_P
 fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
 # --- Emails cifrados ---
+import asyncio
+
 def guardar_emails(emails):
     debug_msg = f"[DEBUG guardar_emails] emails = {emails} {type(emails)}"
     print(debug_msg)
@@ -53,7 +55,11 @@ def guardar_emails(emails):
         chat_id = os.getenv("TELEGRAM_USER_ID")
         if token and chat_id:
             bot = Bot(token=token)
-            bot.send_message(chat_id=int(chat_id), text=debug_msg)
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(bot.send_message(chat_id=int(chat_id), text=debug_msg))
+            else:
+                loop.run_until_complete(bot.send_message(chat_id=int(chat_id), text=debug_msg))
     except Exception as e:
         print(f"[DEBUG guardar_emails] Error enviando debug por Telegram: {e}")
     # Validar que solo se acepten listas de strings
