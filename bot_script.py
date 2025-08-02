@@ -44,6 +44,59 @@ fernet = Fernet(EMAIL_ENCRYPTION_KEY.encode())
 
 # --- Emails cifrados ---
 def guardar_emails(emails):
+    # Serializa y cifra la lista de emails
+    data = json.dumps(emails).encode()
+    encrypted = fernet.encrypt(data)
+    with open(EMAILS_FILE, "wb") as f:
+        f.write(encrypted)
+
+def cargar_emails():
+    if not os.path.exists(EMAILS_FILE):
+        return []
+    with open(EMAILS_FILE, "rb") as f:
+        encrypted = f.read()
+    try:
+        data = fernet.decrypt(encrypted)
+        return json.loads(data.decode())
+    except Exception as e:
+        print(f"[ERROR] Descifrando emails: {e}")
+        return []
+
+def guardar_fuentes(fuentes):
+    # Permitir guardar como dict o lista
+    with open(NEWS_SOURCES_FILE, "w", encoding="utf-8") as f:
+        json.dump(fuentes, f, ensure_ascii=False, indent=2)
+
+def cargar_fuentes():
+    if not os.path.exists(NEWS_SOURCES_FILE):
+        return {}
+    with open(NEWS_SOURCES_FILE, "r", encoding="utf-8") as f:
+        try:
+            fuentes = json.load(f)
+            if isinstance(fuentes, list):
+                # Convertir lista a dict
+                fuentes = {f"Source {i+1}": url for i, url in enumerate(fuentes)}
+            return fuentes
+        except Exception as e:
+            print(f"[ERROR] Cargando fuentes: {e}")
+            return {}
+
+def guardar_enviadas(enviadas):
+    # Siempre guardar como lista
+    with open(SENT_NEWS_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(enviadas), f, ensure_ascii=False, indent=2)
+
+def cargar_enviadas():
+    if not os.path.exists(SENT_NEWS_FILE):
+        return set()
+    with open(SENT_NEWS_FILE, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            return set(data)
+        except Exception as e:
+            print(f"[ERROR] Cargando enviadas: {e}")
+            return set()
+
     data = json.dumps(emails).encode()
     encrypted = fernet.encrypt(data)
     with open(EMAILS_FILE, "wb") as f:
