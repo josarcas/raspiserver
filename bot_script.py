@@ -207,7 +207,6 @@ def optimizar_imagen(imagen_bytes):
         return salida.getvalue()
 
 def crear_epub_con_noticias(urls, archivo_salida):
-    from PIL import ImageDraw, ImageFont
     libro = epub.EpubBook()
     fecha = datetime.now().strftime("%d/%m/%Y")
     titulo = f"RaspiNews México - {fecha}"
@@ -215,12 +214,9 @@ def crear_epub_con_noticias(urls, archivo_salida):
     libro.set_title(titulo)
     libro.set_language("es")
     libro.add_author("RaspiNews")
-    # Metadatos extra para asegurar título en carátula
     libro.add_metadata('DC', 'title', titulo)
     libro.add_metadata('DC', 'creator', "RaspiNews")
     libro.add_metadata('DC', 'language', "es")
-
-    # --- Collage de portada ---
 
     capitulos = []
     for i, url in enumerate(urls):
