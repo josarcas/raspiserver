@@ -601,17 +601,25 @@ async def force_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("No new news to send.")
             return
         nuevas_urls = nuevas_urls[:10]
+        from shutil import copyfile
+        from datetime import datetime
+        fecha_str = datetime.now().strftime("%Y%m%d")
+        nombre_epub = f"RaspiNews_Mexico_{fecha_str}.epub"
         with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_epub:
             tmp_epub.close()
             crear_epub_con_noticias(nuevas_urls, tmp_epub.name)
+            # Copiar a nombre seguro
+            ruta_epub_final = os.path.join(os.path.dirname(tmp_epub.name), nombre_epub)
+            copyfile(tmp_epub.name, ruta_epub_final)
             results = []
             for email in emails:
                 try:
-                    await enviar_email_kindle(tmp_epub.name, "Noticias Diarias", email)
+                    await enviar_email_kindle(ruta_epub_final, "Noticias Diarias", email)
                     results.append(f"✅ Email sent to {email}")
                 except Exception as e:
                     results.append(f"❌ Error sending to {email}: {e}")
             os.unlink(tmp_epub.name)
+            os.unlink(ruta_epub_final)
         await update.message.reply_text("\n".join(results))
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
