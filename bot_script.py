@@ -221,24 +221,6 @@ def crear_epub_con_noticias(urls, archivo_salida):
     libro.add_metadata('DC', 'language', "es")
 
     # --- Collage de portada ---
-    # Portada: solo fondo neutro y título
-    cover_size = (1200, 1800)
-    cover = Image.new("RGB", cover_size, (230, 230, 230))
-    draw = ImageDraw.Draw(cover)
-    try:
-        font = ImageFont.truetype("arial.ttf", 60)
-    except:
-        font = ImageFont.load_default()
-    draw.rectangle([(0, cover_size[1]-200), (cover_size[0], cover_size[1])], fill=(20, 20, 20, 220))
-    draw.text((40, cover_size[1]-180), titulo, font=font, fill=(255,255,255))
-    portada_bytes = io.BytesIO()
-    cover.save(portada_bytes, format="JPEG", quality=70)
-    portada_bytes.seek(0)
-    portada_content = portada_bytes.read()
-    portada_item = epub.EpubItem(uid="cover", file_name="images/cover.jpg", media_type="image/jpeg", content=portada_content)
-    libro.add_item(portada_item)
-    libro.set_cover("cover.jpg", portada_content)
-    cover.close()
 
     capitulos = []
     for i, url in enumerate(urls):
