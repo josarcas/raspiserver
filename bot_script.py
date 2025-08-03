@@ -221,64 +221,24 @@ def crear_epub_con_noticias(urls, archivo_salida):
     libro.add_metadata('DC', 'language', "es")
 
     # --- Collage de portada ---
-    portada_imgs = []
-    for i, url in enumerate(urls[:4]):
-        try:
-            article = Article(url)
-            article.download()
-            article.parse()
-            imagenes = list(article.images)
-            if imagenes:
-                img_data = requests.get(imagenes[0], timeout=5).content
-                img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                portada_imgs.append(img)
-        except Exception:
-            continue
-    # Crear collage o fondo simple con robustez
+    # Portada: solo fondo neutro y título
     cover_size = (1200, 1800)
+    cover = Image.new("RGB", cover_size, (230, 230, 230))
+    draw = ImageDraw.Draw(cover)
     try:
-        cover = Image.new("RGB", cover_size, (230, 230, 230))
-        if portada_imgs:
-            for idx, img in enumerate(portada_imgs):
-                img = img.resize((cover_size[0]//2, cover_size[1]//2))
-                x = (idx % 2) * (cover_size[0]//2)
-                y = (idx // 2) * (cover_size[1]//2)
-                cover.paste(img, (x, y))
-        draw = ImageDraw.Draw(cover)
-        try:
-            font = ImageFont.truetype("arial.ttf", 60)
-        except:
-            font = ImageFont.load_default()
-        draw.rectangle([(0, cover_size[1]-200), (cover_size[0], cover_size[1])], fill=(20, 20, 20, 220))
-        draw.text((40, cover_size[1]-180), titulo, font=font, fill=(255,255,255))
-        portada_bytes = io.BytesIO()
-        cover.save(portada_bytes, format="JPEG", quality=70)
-        portada_bytes.seek(0)
-        portada_content = portada_bytes.read()
-        portada_item = epub.EpubItem(uid="cover", file_name="images/cover.jpg", media_type="image/jpeg", content=portada_content)
-        libro.add_item(portada_item)
-        libro.set_cover("cover.jpg", portada_content)
-        cover.close()
-        for img in portada_imgs:
-            img.close()
-    except Exception as e:
-        # Si falla el collage, usar fondo neutro
-        cover = Image.new("RGB", cover_size, (230, 230, 230))
-        draw = ImageDraw.Draw(cover)
-        try:
-            font = ImageFont.truetype("arial.ttf", 60)
-        except:
-            font = ImageFont.load_default()
-        draw.rectangle([(0, cover_size[1]-200), (cover_size[0], cover_size[1])], fill=(20, 20, 20, 220))
-        draw.text((40, cover_size[1]-180), titulo, font=font, fill=(255,255,255))
-        portada_bytes = io.BytesIO()
-        cover.save(portada_bytes, format="JPEG", quality=70)
-        portada_bytes.seek(0)
-        portada_content = portada_bytes.read()
-        portada_item = epub.EpubItem(uid="cover", file_name="images/cover.jpg", media_type="image/jpeg", content=portada_content)
-        libro.add_item(portada_item)
-        libro.set_cover("cover.jpg", portada_content)
-        cover.close()
+        font = ImageFont.truetype("arial.ttf", 60)
+    except:
+        font = ImageFont.load_default()
+    draw.rectangle([(0, cover_size[1]-200), (cover_size[0], cover_size[1])], fill=(20, 20, 20, 220))
+    draw.text((40, cover_size[1]-180), titulo, font=font, fill=(255,255,255))
+    portada_bytes = io.BytesIO()
+    cover.save(portada_bytes, format="JPEG", quality=70)
+    portada_bytes.seek(0)
+    portada_content = portada_bytes.read()
+    portada_item = epub.EpubItem(uid="cover", file_name="images/cover.jpg", media_type="image/jpeg", content=portada_content)
+    libro.add_item(portada_item)
+    libro.set_cover("cover.jpg", portada_content)
+    cover.close()
 
     capitulos = []
     for i, url in enumerate(urls):
